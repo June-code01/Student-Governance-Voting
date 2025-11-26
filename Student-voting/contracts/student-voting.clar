@@ -193,3 +193,181 @@
         (ok true)
     )
 )
+
+;; #[allow(unchecked_data)]
+(define-public (deactivate-proposal (proposal-id uint))
+    (let (
+        (proposal (unwrap! (map-get? proposals { proposal-id: proposal-id }) err-not-found))
+    )
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (map-set proposals
+            { proposal-id: proposal-id }
+            (merge proposal { active: false })
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (reactivate-proposal (proposal-id uint))
+    (let (
+        (proposal (unwrap! (map-get? proposals { proposal-id: proposal-id }) err-not-found))
+    )
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (asserts! (<= stacks-block-height (get end-block proposal)) err-not-active)
+        (map-set proposals
+            { proposal-id: proposal-id }
+            (merge proposal { active: true })
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (extend-proposal-duration (proposal-id uint) (additional-blocks uint))
+    (let (
+        (proposal (unwrap! (map-get? proposals { proposal-id: proposal-id }) err-not-found))
+    )
+        (asserts! (is-eq tx-sender (get proposer proposal)) err-unauthorized)
+        (asserts! (get active proposal) err-not-active)
+        (map-set proposals
+            { proposal-id: proposal-id }
+            (merge proposal { end-block: (+ (get end-block proposal) additional-blocks) })
+        )
+        (ok true)
+    )
+)
+
+;; Additional read-only helper functions
+(define-read-only (get-proposal-status (proposal-id uint))
+    (match (map-get? proposals { proposal-id: proposal-id })
+        proposal (ok {
+            active: (get active proposal),
+            executed: (get executed proposal),
+            is-voting-open: (is-proposal-active proposal-id),
+            yes-votes: (get yes-votes proposal),
+            no-votes: (get no-votes proposal),
+            total-votes: (+ (get yes-votes proposal) (get no-votes proposal))
+        })
+        err-not-found
+    )
+)
+
+(define-read-only (get-proposal-result (proposal-id uint))
+    (match (map-get? proposals { proposal-id: proposal-id })
+        proposal (ok {
+            passed: (> (get yes-votes proposal) (get no-votes proposal)),
+            yes-votes: (get yes-votes proposal),
+            no-votes: (get no-votes proposal),
+            vote-difference: (if (> (get yes-votes proposal) (get no-votes proposal))
+                (- (get yes-votes proposal) (get no-votes proposal))
+                (- (get no-votes proposal) (get yes-votes proposal))
+            )
+        })
+        err-not-found
+    )
+)
+
+(define-read-only (get-voter-participation (voter principal))
+    (match (map-get? voters { voter: voter })
+        voter-info (ok {
+            registered: (get registered voter-info),
+            total-votes: (get vote-count voter-info),
+            student-id: (get student-id voter-info)
+        })
+        err-not-found
+    )
+)
+
+(define-read-only (calculate-proposal-percentage (proposal-id uint))
+    (match (map-get? proposals { proposal-id: proposal-id })
+        proposal (let (
+            (total-votes (+ (get yes-votes proposal) (get no-votes proposal)))
+        )
+            (if (is-eq total-votes u0)
+                (ok { yes-percentage: u0, no-percentage: u0 })
+                (ok {
+                    yes-percentage: (/ (* (get yes-votes proposal) u100) total-votes),
+                    no-percentage: (/ (* (get no-votes proposal) u100) total-votes)
+                })
+            )
+        )
+        err-not-found
+    )
+)
+
+(define-read-only (is-voter-registered (voter principal))
+    (match (map-get? voters { voter: voter })
+        voter-info (get registered voter-info)
+        false
+    )
+)
+
+(define-read-only (get-total-voters)
+    (ok (var-get total-voters))
+)
+
+(define-read-only (get-proposal-time-remaining (proposal-id uint))
+    (match (map-get? proposals { proposal-id: proposal-id })
+        proposal (if (> stacks-block-height (get end-block proposal))
+            (ok u0)
+            (ok (- (get end-block proposal) stacks-block-height))
+        )
+        err-not-found
+    )
+)
+
+(define-read-only (is-proposal-passed (proposal-id uint))
+    (match (map-get? proposals { proposal-id: proposal-id })
+        proposal (ok (> (get yes-votes proposal) (get no-votes proposal)))
+        err-not-found
+    )
+)
+
+(define-read-only (get-proposal-details (proposal-id uint))
+    (match (map-get? proposals { proposal-id: proposal-id })
+        proposal (ok {
+            title: (get title proposal),
+            description: (get description proposal),
+            proposer: (get proposer proposal),
+            start-block: (get start-block proposal),
+            end-block: (get end-block proposal)
+        })
+        err-not-found
+    )
+)
+
+(define-read-only (get-vote-counts (proposal-id uint))
+    (match (map-get? proposals { proposal-id: proposal-id })
+        proposal (ok {
+            yes-votes: (get yes-votes proposal),
+            no-votes: (get no-votes proposal),
+            total-votes: (+ (get yes-votes proposal) (get no-votes proposal))
+        })
+        err-not-found
+    )
+)
+
+(define-read-only (is-proposal-expired (proposal-id uint))
+    (match (map-get? proposals { proposal-id: proposal-id })
+        proposal (ok (> stacks-block-height (get end-block proposal)))
+        err-not-found
+    )
+)
+
+(define-read-only (can-voter-vote (proposal-id uint) (voter principal))
+    (let (
+        (is-registered (is-voter-registered voter))
+        (already-voted (has-voted proposal-id voter))
+        (is-active (is-proposal-active proposal-id))
+    )
+        (ok (and is-registered (not already-voted) is-active))
+    )
+)
+
+(define-read-only (get-proposal-proposer (proposal-id uint))
+    (match (map-get? proposals { proposal-id: proposal-id })
+        proposal (ok (get proposer proposal))
+        err-not-found
+    )
+)
