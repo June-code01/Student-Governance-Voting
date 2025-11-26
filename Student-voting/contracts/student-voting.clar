@@ -44,3 +44,35 @@
         vote-time: uint
     }
 )
+
+;; Read-only functions
+(define-read-only (get-proposal (proposal-id uint))
+    (map-get? proposals { proposal-id: proposal-id })
+)
+
+(define-read-only (get-voter (voter principal))
+    (map-get? voters { voter: voter })
+)
+
+(define-read-only (has-voted (proposal-id uint) (voter principal))
+    (is-some (map-get? votes { proposal-id: proposal-id, voter: voter }))
+)
+
+(define-read-only (get-vote (proposal-id uint) (voter principal))
+    (map-get? votes { proposal-id: proposal-id, voter: voter })
+)
+
+(define-read-only (get-total-proposals)
+    (ok (var-get total-proposals))
+)
+
+(define-read-only (is-proposal-active (proposal-id uint))
+    (match (map-get? proposals { proposal-id: proposal-id })
+        proposal (and 
+            (get active proposal)
+            (>= stacks-block-height (get start-block proposal))
+            (<= stacks-block-height (get end-block proposal))
+        )
+        false
+    )
+)
