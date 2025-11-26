@@ -11,3 +11,36 @@
 ;; Data Variables
 (define-data-var total-proposals uint u0)
 (define-data-var total-voters uint u0)
+
+;; Data Maps
+(define-map proposals
+    { proposal-id: uint }
+    {
+        title: (string-ascii 100),
+        description: (string-ascii 500),
+        proposer: principal,
+        yes-votes: uint,
+        no-votes: uint,
+        start-block: uint,
+        end-block: uint,
+        active: bool,
+        executed: bool
+    }
+)
+
+(define-map voters
+    { voter: principal }
+    {
+        registered: bool,
+        student-id: (string-ascii 50),
+        vote-count: uint
+    }
+)
+
+(define-map votes
+    { proposal-id: uint, voter: principal }
+    {
+        vote: bool,
+        vote-time: uint
+    }
+)
